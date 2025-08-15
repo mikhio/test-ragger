@@ -1,0 +1,26 @@
+# Qdrant gRPC endpoint
+qdrant_grpc = "localhost:6334"
+
+# Collection name in Qdrant
+collection = "docs"
+
+# Embedding vector dimension (OpenAI text-embedding-3-* is 1536)
+embedding_dim = 1536
+
+# Chunking parameters for HTML text
+chunk_size = 1200
+chunk_overlap = 250
+
+# Default embedding model and runtime options
+default_model = "text-embedding-3-small"
+# If you want to pin model explicitly (overrides default_model)
+# model = "text-embedding-3-small"
+
+# Runtime (can be overridden by CLI flags)
+# mode = "ingest"     # or "search"
+# dir = "./html"
+# k = 5
+# q = ""
+# lang = ""
+
+
