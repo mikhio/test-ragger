@@ -1,0 +1,31 @@
+# OpenAI API ключ (обязательно)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Настройки Qdrant (опционально, есть значения по умолчанию)
+COLLECTION=docs
+EMBEDDING_DIM=1536
+
+# Настройки чанкинга (опционально)
+CHUNK_SIZE=1200
+CHUNK_OVERLAP=250
+
+# Модель эмбеддингов (опционально)
+DEFAULT_MODEL=text-embedding-3-small
+
+# Рабочие параметры
+MODE=ingest
+HTML_DIR=./html
+TOP_K=5
+QUERY=
+LANG=
+
+# Примеры для разных режимов:
+# Для индексации:
+# MODE=ingest
+# HTML_DIR=./html
+
+# Для поиска:
+# MODE=search
+# QUERY="ваш поисковый запрос"
+# TOP_K=10
+# LANG=ru

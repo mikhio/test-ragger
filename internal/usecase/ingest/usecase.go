@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlekSi/pointer"
 	qdrant "github.com/qdrant/go-client/qdrant"
 	openai "github.com/sashabaranov/go-openai"
 
@@ -80,6 +81,7 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			if err != nil {
 				return fmt.Errorf("embedding: %w", err)
 			}
+
 			vec := res.Data[0].Embedding
 			if len(vec) != cfg.EmbeddingDim {
 				return fmt.Errorf("dim mismatch: got %d want %d", len(vec), cfg.EmbeddingDim)
@@ -109,16 +111,19 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 		_, err = u.qdrantPointsClient.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: cfg.Collection,
 			Points:         batch,
-			Wait:           utils.BoolPtr(true),
+			Wait:           pointer.To(true),
 		})
 		if err != nil {
 			return err
 		}
+
 		log.Printf("ingested %s (%d chunks)", path, len(chunks))
+
 		return nil
 	})
 }
 
+// Убеждаемся что создана коллекция, если нет - то создаем
 func (u *Usecase) ensureCollection(ctx context.Context, collection string, dim int) error {
 	_, err := u.qdrantCollectionClient.Get(ctx, &qdrant.GetCollectionInfoRequest{CollectionName: collection})
 	if err == nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	qdrant "github.com/qdrant/go-client/qdrant"
 	openai "github.com/sashabaranov/go-openai"
@@ -16,6 +15,7 @@ import (
 	"test-ragger/internal/usecase/ingest"
 	"test-ragger/internal/usecase/search"
 	"test-ragger/internal/utils"
+	"test-ragger/internal/utils/chunker"
 	"test-ragger/internal/utils/htmlx"
 	"test-ragger/internal/utils/prompt"
 )
@@ -70,7 +70,7 @@ func NewContainer(ctx context.Context, args []string) (*Container, error) {
 
 	// Services
 	htmlParser := &htmlParserImpl{}
-	textChunker := &textChunkerImpl{}
+	textChunker := chunker.New()
 	promptBuilder := &promptBuilderImpl{}
 
 	return &Container{
@@ -103,43 +103,6 @@ func (h *htmlParserImpl) ToText(ctx context.Context, path string) (string, strin
 	}
 	defer f.Close()
 	return htmlx.ToText(f, path)
-}
-
-type textChunkerImpl struct{}
-
-func (t *textChunkerImpl) ChunkText(text string, size, overlap int) []models.ChunkInfo {
-	var out []models.ChunkInfo
-	i := 0
-	ch := 0
-	for i < len(text) {
-		end := i + size
-		if end > len(text) {
-			end = len(text)
-		}
-		frag := text[i:end]
-		// try not to cut words at the end of chunk
-		if end < len(text) {
-			if j := strings.LastIndex(frag, " "); j > int(float64(size)*0.6) {
-				frag = frag[:j]
-				end = i + j
-			}
-		}
-		out = append(out, models.ChunkInfo{
-			Text:    frag,
-			Start:   i,
-			End:     end,
-			ChunkID: fmt.Sprintf("ch_%d", ch),
-		})
-		ch++
-		if end <= i {
-			break
-		}
-		i = end - overlap
-		if i < 0 {
-			i = 0
-		}
-	}
-	return out
 }
 
 type promptBuilderImpl struct{}

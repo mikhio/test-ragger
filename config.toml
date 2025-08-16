@@ -1,4 +1,6 @@
 # Qdrant gRPC endpoint
+# Для Docker используйте: qdrant:6334
+# Для локальной разработки: localhost:6334
 qdrant_grpc = "localhost:6334"
 
 # Collection name in Qdrant
