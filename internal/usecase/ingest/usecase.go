@@ -70,21 +70,35 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			slog.Info("Skipping empty file", "path", path)
 			return nil
 		}
+
+		// Clean text and title from invalid UTF-8 characters early
+		text = utils.CleanUTF8(text)
+		title = utils.CleanUTF8(title)
+
 		slog.Info("Parsed HTML to text", "title", title, "characters", len(text))
 
 		docID := "doc_" + utils.Sha1Hex(path)
+
 		slog.Info("Chunking text", "chunk_size", cfg.ChunkSize, "overlap", cfg.ChunkOverlap)
 		chunks := u.textChunker.ChunkText(text, cfg.ChunkSize, cfg.ChunkOverlap)
 		slog.Info("Created chunks", "count", len(chunks))
+
 		batch := make([]*qdrant.PointStruct, 0, len(chunks))
 
 		slog.Info("Creating embeddings", "chunks_count", len(chunks))
 		for i, c := range chunks {
 			slog.Debug("Processing chunk", "chunk_index", i, "chunk_length", len(c.Text))
+
+			// Clean chunk text from invalid UTF-8 characters
+			cleanText := utils.CleanUTF8(c.Text)
+			if len(cleanText) != len(c.Text) {
+				slog.Debug("Cleaned invalid UTF-8 characters", "original_length", len(c.Text), "cleaned_length", len(cleanText))
+			}
+
 			// create embedding
 			res, err := u.embeddingClient.CreateEmbeddings(ctx, openai.EmbeddingRequest{
 				Model: model,
-				Input: []string{c.Text},
+				Input: []string{cleanText},
 			})
 			if err != nil {
 				return fmt.Errorf("embedding: %w", err)
@@ -106,14 +120,17 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 				"path":        {Kind: &qdrant.Value_StringValue{StringValue: path}},
 				"start":       {Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(c.Start)}},
 				"end":         {Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(c.End)}},
-				"text":        {Kind: &qdrant.Value_StringValue{StringValue: c.Text}},
+				"text":        {Kind: &qdrant.Value_StringValue{StringValue: cleanText}},
 				"ingested_at": {Kind: &qdrant.Value_StringValue{StringValue: time.Now().Format(time.RFC3339)}},
 				"lang":        {Kind: &qdrant.Value_StringValue{StringValue: "ru"}},
 				"type":        {Kind: &qdrant.Value_StringValue{StringValue: "html"}},
 			}
 
+			// Use numeric ID instead of UUID to avoid parsing issues
+			pointId := uint64(utils.Sha1Hash(docID + "_" + c.ChunkID))
+
 			batch = append(batch, &qdrant.PointStruct{
-				Id:      &qdrant.PointId{PointIdOptions: &qdrant.PointId_Uuid{Uuid: docID + "_" + c.ChunkID}},
+				Id:      &qdrant.PointId{PointIdOptions: &qdrant.PointId_Num{Num: pointId}},
 				Vectors: &qdrant.Vectors{VectorsOptions: &qdrant.Vectors_Vector{Vector: &qdrant.Vector{Data: vec}}},
 				Payload: payload,
 			})

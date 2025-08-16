@@ -54,10 +54,14 @@ func (t *TextChunker) ChunkText(text string, size, overlap int) []models.ChunkIn
 		}
 
 		// Move position with overlap
-		position = end - overlap
-		if position < 0 {
-			position = 0
+		newPosition := end - overlap
+
+		// Size of current chunk is less than overlap - exit
+		if newPosition <= position {
+			break
 		}
+
+		position = newPosition
 	}
 
 	return chunks

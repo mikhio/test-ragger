@@ -78,8 +78,10 @@ func main() {
 			container.IngestTextChunker,
 		)
 		if err := ingestUC.Run(ctx, cfg.HTMLDir, model); err != nil {
-			log.Fatal(err)
+			slog.Error("Ingest stopped with error", "error", err)
+			os.Exit(1)
 		}
+
 		slog.Info("Ingest process completed successfully")
 	case "search":
 		if cfg.Query == "" {
