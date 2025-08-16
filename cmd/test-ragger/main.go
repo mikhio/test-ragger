@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -20,7 +21,31 @@ func main() {
 	_ = godotenv.Load()
 	ctx := context.Background()
 
+	// Setup structured logging
+	logLevel := slog.LevelInfo
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		switch level {
+		case "DEBUG":
+			logLevel = slog.LevelDebug
+		case "INFO":
+			logLevel = slog.LevelInfo
+		case "WARN":
+			logLevel = slog.LevelWarn
+		case "ERROR":
+			logLevel = slog.LevelError
+		}
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+	slog.SetDefault(logger)
+
+	slog.Info("Starting test-ragger application")
+	slog.Debug("Log level set", "level", logLevel.String())
+
 	// Initialize dependencies container
+	slog.Info("Loading configuration from config.toml")
 	container, err := configure.NewContainer(ctx, os.Args)
 	if err != nil {
 		log.Fatal(err)
@@ -29,6 +54,10 @@ func main() {
 
 	cfg := container.Config
 	ctx = config.IntoContext(ctx, cfg)
+
+	slog.Info("Configuration loaded successfully", "mode", cfg.Mode, "collection", cfg.Collection)
+	slog.Info("Initialized OpenAI client", "model", cfg.Model)
+	slog.Info("Connected to Qdrant", "endpoint", cfg.QdrantGRPC)
 
 	var model openai.EmbeddingModel
 	switch cfg.Model {
@@ -40,6 +69,7 @@ func main() {
 
 	switch cfg.Mode {
 	case "ingest":
+		slog.Info("Starting ingest mode", "html_dir", cfg.HTMLDir)
 		ingestUC := ingest.New(
 			container.IngestEmbeddingClient,
 			container.IngestQdrantCollectionClient,
@@ -50,19 +80,23 @@ func main() {
 		if err := ingestUC.Run(ctx, cfg.HTMLDir, model); err != nil {
 			log.Fatal(err)
 		}
+		slog.Info("Ingest process completed successfully")
 	case "search":
 		if cfg.Query == "" {
 			log.Fatal("-q is required in search mode")
 		}
+		slog.Info("Starting search mode", "query", cfg.Query, "top_k", cfg.TopK)
 		searchUC := search.New(
 			container.SearchEmbeddingClient,
 			container.SearchQdrantPointsClient,
 			container.SearchPromptBuilder,
 		)
+		slog.Info("Creating embedding for search query")
 		hits, err := searchUC.Search(ctx, cfg.Query, cfg.TopK, model, cfg.Lang)
 		if err != nil {
 			log.Fatal(err)
 		}
+		slog.Info("Search completed", "results_count", len(hits))
 
 		fmt.Printf("Query: %s\nTop-%d results:\n", cfg.Query, cfg.TopK)
 		for i, h := range hits {

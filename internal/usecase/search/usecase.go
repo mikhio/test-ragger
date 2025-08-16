@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	qdrant "github.com/qdrant/go-client/qdrant"
 	openai "github.com/sashabaranov/go-openai"
@@ -37,19 +38,23 @@ func (u *Usecase) Search(ctx context.Context, query string, topK uint64, model o
 	cfg, _ := config.FromContext(ctx)
 
 	// create query embedding
+	slog.Info("Creating embedding for query", "query", query)
 	emb, err := u.embeddingClient.CreateEmbeddings(ctx, openai.EmbeddingRequest{Model: model, Input: []string{query}})
 	if err != nil {
 		return nil, err
 	}
 	vec := emb.Data[0].Embedding
+	slog.Info("Query embedding created", "dimension", len(vec))
 
 	// build filter if needed
 	var filter *qdrant.Filter
 	if langFilter != "" {
+		slog.Info("Applying language filter", "language", langFilter)
 		filter = &qdrant.Filter{Must: []*qdrant.Condition{{ConditionOneOf: &qdrant.Condition_Field{Field: &qdrant.FieldCondition{Key: "lang", Match: &qdrant.Match{MatchValue: &qdrant.Match_Keyword{Keyword: langFilter}}}}}}}
 	}
 
 	// execute search
+	slog.Info("Executing vector search", "collection", cfg.Collection, "top_k", topK)
 	resp, err := u.qdrantPointsClient.Search(ctx, &qdrant.SearchPoints{
 		CollectionName: cfg.Collection,
 		Vector:         vec,
@@ -61,6 +66,7 @@ func (u *Usecase) Search(ctx context.Context, query string, topK uint64, model o
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("Vector search completed", "results_retrieved", len(resp.Result))
 
 	// convert to hits
 	hits := make([]models.Hit, 0, len(resp.Result))

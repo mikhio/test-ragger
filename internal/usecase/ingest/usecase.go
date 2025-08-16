@@ -3,7 +3,7 @@ package ingest
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,9 +47,11 @@ func New(
 func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.EmbeddingModel) error {
 	cfg, _ := config.FromContext(ctx)
 
+	slog.Info("Ensuring collection exists", "collection", cfg.Collection, "dimension", cfg.EmbeddingDim)
 	if err := u.ensureCollection(ctx, cfg.Collection, cfg.EmbeddingDim); err != nil {
 		return fmt.Errorf("ensureCollection: %w", err)
 	}
+	slog.Info("Collection ready for ingestion")
 
 	return filepath.Walk(htmlDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -59,20 +61,26 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			return nil
 		}
 
+		slog.Info("Parsing HTML file", "path", path)
 		text, title, err := u.htmlParser.ToText(ctx, path)
 		if err != nil {
 			return err
 		}
 		if len(text) == 0 {
-			log.Printf("skip empty: %s", path)
+			slog.Info("Skipping empty file", "path", path)
 			return nil
 		}
+		slog.Info("Parsed HTML to text", "title", title, "characters", len(text))
 
 		docID := "doc_" + utils.Sha1Hex(path)
+		slog.Info("Chunking text", "chunk_size", cfg.ChunkSize, "overlap", cfg.ChunkOverlap)
 		chunks := u.textChunker.ChunkText(text, cfg.ChunkSize, cfg.ChunkOverlap)
+		slog.Info("Created chunks", "count", len(chunks))
 		batch := make([]*qdrant.PointStruct, 0, len(chunks))
 
-		for _, c := range chunks {
+		slog.Info("Creating embeddings", "chunks_count", len(chunks))
+		for i, c := range chunks {
+			slog.Debug("Processing chunk", "chunk_index", i, "chunk_length", len(c.Text))
 			// create embedding
 			res, err := u.embeddingClient.CreateEmbeddings(ctx, openai.EmbeddingRequest{
 				Model: model,
@@ -80,6 +88,9 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			})
 			if err != nil {
 				return fmt.Errorf("embedding: %w", err)
+			}
+			if i%10 == 0 && i > 0 {
+				slog.Info("Embeddings progress", "completed", i, "total", len(chunks))
 			}
 
 			vec := res.Data[0].Embedding
@@ -108,6 +119,7 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			})
 		}
 
+		slog.Info("Upserting points to Qdrant", "points_count", len(batch), "collection", cfg.Collection)
 		_, err = u.qdrantPointsClient.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: cfg.Collection,
 			Points:         batch,
@@ -117,7 +129,7 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 			return err
 		}
 
-		log.Printf("ingested %s (%d chunks)", path, len(chunks))
+		slog.Info("Successfully ingested file", "path", path, "chunks", len(chunks))
 
 		return nil
 	})
@@ -127,8 +139,10 @@ func (u *Usecase) Run(ctx context.Context, htmlDir string, model openai.Embeddin
 func (u *Usecase) ensureCollection(ctx context.Context, collection string, dim int) error {
 	_, err := u.qdrantCollectionClient.Get(ctx, &qdrant.GetCollectionInfoRequest{CollectionName: collection})
 	if err == nil {
+		slog.Info("Collection already exists", "collection", collection)
 		return nil
 	}
+	slog.Info("Creating new collection", "collection", collection, "dimension", dim)
 	_, err = u.qdrantCollectionClient.Create(ctx, &qdrant.CreateCollection{
 		CollectionName: collection,
 		VectorsConfig: &qdrant.VectorsConfig{
@@ -140,5 +154,8 @@ func (u *Usecase) ensureCollection(ctx context.Context, collection string, dim i
 			},
 		},
 	})
+	if err == nil {
+		slog.Info("Collection created successfully", "collection", collection)
+	}
 	return err
 }

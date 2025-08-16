@@ -1,6 +1,10 @@
 # OpenAI API ключ (обязательно)
 OPENAI_API_KEY=your_openai_api_key_here
 
+# Уровень логирования (опционально, по умолчанию INFO)
+# Доступные уровни: DEBUG, INFO, WARN, ERROR
+LOG_LEVEL=INFO
+
 # Настройки Qdrant (опционально, есть значения по умолчанию)
 COLLECTION=docs
 EMBEDDING_DIM=1536
